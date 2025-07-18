@@ -1,27 +1,21 @@
-FROM openjdk:21-jdk-slim
+FROM gradle:8.10.2-jdk21 as builder
 
-# Instala herramientas necesarias
-RUN apt-get update && apt-get install -y \
-    unzip \
-    git \
-    curl \
-    build-essential \
-    findutils \
- && apt-get clean
-
-# Crea directorio de trabajo
 WORKDIR /fineract
 
-# Copia todos los archivos al contenedor
 COPY . .
 
 # Compila el .jar sin ejecutar pruebas
-RUN chmod +x ./gradlew && ./gradlew -x test bootJar && \
+RUN gradle -x test bootJar && \
     mv fineract-provider/build/libs/fineract-provider-*.jar fineract-provider/build/libs/fineract-provider.jar
 
+# Segunda etapa para una imagen más ligera
+FROM openjdk:21-jdk-slim
 
-# Exponer el puerto por defecto
+WORKDIR /fineract
+
+# Copia el JAR generado desde la etapa anterior
+COPY --from=builder /fineract/fineract-provider/build/libs/fineract-provider.jar fineract-provider/build/libs/fineract-provider.jar
+
 EXPOSE 8443
 
-# Comando de inicio
 CMD ["java", "-jar", "fineract-provider/build/libs/fineract-provider.jar"]
