@@ -8,53 +8,67 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production  # opcional: solo si usas un Environment en GitHub
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+      - name: Run tests (Gradle)
+        run: ./gradlew test
+        # Si usas Maven, cambia a: mvn test
 
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Build Docker image
-      run: |
-        docker build -t web-app:latest .
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Tag image for ECR
-      run: |
-        docker tag web-app:latest ${{ secrets.ECR_REPOSITORY }}:latest
+      - name: Build Docker image
+        run: |
+          docker build -t web-app:latest .
 
-    - name: Push to Amazon ECR
-      run: |
-        docker push ${{ secrets.ECR_REPOSITORY }}:latest
+      - name: Tag image for ECR
+        run: |
+          docker tag web-app:latest ${{ secrets.ECR_REPOSITORY }}:latest
 
-    - name: Set up SSH
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+      - name: Push image to ECR
+        run: |
+          docker push ${{ secrets.ECR_REPOSITORY }}:latest
 
-    - name: Deploy on EC2
-      run: |
-        ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << EOF
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-            docker login --username AWS --password-stdin ${{ secrets.ECR_REPOSITORY }}
+      - name: Set up SSH access
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-          docker stop fineract || true
-          docker rm fineract || true
-
-          docker pull ${{ secrets.ECR_REPOSITORY }}:latest
-
-          docker run -d --name fineract \
-            -p 8443:8443 \
-            ${{ secrets.ECR_REPOSITORY }}:latest
-        EOF
+      - name: Deploy on EC2
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            set -ex
+          
+            # Login to ECR
+            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+              docker login --username AWS --password-stdin ${{ secrets.ECR_REPOSITORY }}
+          
+            # Stop and remove existing container
+            docker stop fineract || true
+            docker rm fineract || true
+          
+            # Pull latest image from ECR
+            docker pull ${{ secrets.ECR_REPOSITORY }}:latest
+          
+            # Run the new container
+            docker run -d --name fineract \
+              -p 8443:8443 \
+              ${{ secrets.ECR_REPOSITORY }}:latest
+          
+            # Show logs (optional)
+            docker logs --tail 50 fineract
+          EOF
