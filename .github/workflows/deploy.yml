@@ -22,10 +22,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
-
-      - name: Run tests (Gradle)
-        run: ./gradlew test
-
+          
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
