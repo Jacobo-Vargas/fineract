@@ -8,7 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production  # opcional: solo si usas un Environment en GitHub
+    environment: production
 
     steps:
       - name: Checkout repository
@@ -17,9 +17,14 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
       - name: Run tests (Gradle)
         run: ./gradlew test
-        # Si usas Maven, cambia a: mvn test
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
